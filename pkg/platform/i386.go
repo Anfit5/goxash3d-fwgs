@@ -7,7 +7,10 @@
 
 package platform
 
-import "time"
+import (	
+	//"time"
+	"runtime"
+)
 
 // Delay pauses execution briefly to simulate timing behavior.
 //
@@ -15,5 +18,6 @@ import "time"
 // network operations like recvfrom, or preventing tight loops
 // from consuming too much CPU on certain system configurations.
 func Delay() {
-	time.Sleep(time.Millisecond)
+//	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 }

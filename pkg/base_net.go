@@ -2,9 +2,10 @@ package goxash3d_fwgs
 
 import (
 	"fmt"
-	"github.com/yohimik/goxash3d-fwgs/pkg/platform"
+	"github.com/Anfit5/goxash3d-fwgs/pkg/platform"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // BaseNetOptions holds configuration for the BaseNet instance.
@@ -36,7 +37,8 @@ type BaseNet struct {
 func NewBaseNet(opts BaseNetOptions) *BaseNet {
 	return &BaseNet{
 		sockets: make(map[int]*NetSocket),
-		packets: NewPacketQueue(128),
+		//packets: NewPacketQueue(128),
+		packets: NewPacketQueue(2048),
 		Options: opts,
 	}
 }
@@ -67,7 +69,10 @@ func (n *BaseNet) CloseSocket(fd int) int {
 
 // PushPacket adds a packet to the internal packet queue.
 func (n *BaseNet) PushPacket(packet Packet) {
-	n.packets.Enqueue(packet)
+	//n.packets.Enqueue(packet)
+	if err := n.packets.Enqueue(packet); err != nil {
+		FileLog("ERROR", "[PUSH FAIL] PushPacket failed for %s:%d - %v", packet.Addr.IP, packet.Addr.Port, err)
+	}
 }
 
 // RecvFrom attempts to retrieve a packet from the queue.
@@ -76,11 +81,20 @@ func (n *BaseNet) PushPacket(packet Packet) {
 // (e.g., simulating blocking behavior similar to recvfrom).
 // Returns nil if no packet is available.
 func (n *BaseNet) RecvFrom() *Packet {
-	platform.Delay()
 	p, ok := n.packets.TryDequeue()
 	if !ok {
+		// Очередь пуста — даем паузу планировщику, чтобы не выжигать CPU
+		delayStart := time.Now()
+		platform.Delay()
+		delayDuration := time.Since(delayStart)
+
+		if delayDuration > 15*time.Millisecond {
+			FileLog("WARN", "[VPS CPU STEAL] Idle delay took %v (expected <1ms). Host hypervisor or OS scheduler preempted execution", delayDuration)
+		}
 		return nil
 	}
+
+	// Если пакет найден — возвращаем ЕГО СРАЗУ, без вызова platform.Delay()!
 	return &p
 }
 

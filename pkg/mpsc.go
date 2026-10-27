@@ -87,12 +87,23 @@ func (q *PacketQueue) Enqueue(p Packet) error {
 			cell.val = p
 			// publish: make visible to consumer
 			atomic.StoreUint32(&cell.seq, pos+1)
+			
+			// Логируем предупреждение, если очередь заполнена более чем на 75%
+			currentLen := q.Len()
+			if currentLen > int(q.mask)*3/4 {
+				FileLog("WARN", "[QUEUE HIGH] PacketQueue capacity warning: %d/%d packets in queue", currentLen, q.mask+1)
+			}
+			
 			return nil
 		}
 		// seq < pos  => slot still not consumed (full)
 		// seq > pos  => another producer raced ahead and already took this slot (shouldn't happen because pos unique)
 		if seq < pos {
 			// queue full
+			
+			// ОЧЕРЕДЬ ПЕРЕПОЛНЕНА!
+			FileLog("ERROR", "[QUEUE FULL] Packet dropped! Queue capacity (%d) exceeded! Tail: %d, Head: %d, Slot: %s:%d", 
+				q.mask+1, atomic.LoadUint32(&q.tail), q.head, p.Addr.IP, p.Addr.Port)
 			return ErrPacketQueueFull
 		}
 		// backoff strategy: a few busy loops then yield
